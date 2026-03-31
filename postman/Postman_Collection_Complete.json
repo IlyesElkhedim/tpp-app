@@ -1,0 +1,624 @@
+{
+  "info": {
+    "_postman_id": "1ac8d702-9dca-4cf4-8cb8-0d2b3852edec",
+    "name": "TPP API - Complete Collection",
+    "description": "Postman collection to test the TPP API (Management of time slots, students, supervisors, and courses)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "40344283"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check if the API is online"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "item": [
+        {
+          "name": "Get All Students",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/students",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "students"
+              ]
+            },
+            "description": "Retrieve all students"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Student By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/students/{{studentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "students",
+                "{{studentId}}"
+              ]
+            },
+            "description": "Retrieve a specific student by student number (8 digits)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Supervisors",
+      "item": [
+        {
+          "name": "Get All Supervisors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/supervisors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "supervisors"
+              ]
+            },
+            "description": "Retrieve all supervisors"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Supervisor By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/supervisors/{{supervisorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "supervisors",
+                "{{supervisorId}}"
+              ]
+            },
+            "description": "Retrieve a specific supervisor by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Supervisor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Nicolas\",\n  \"lastName\": \"Lumineau\",\n  \"email\": \"nicolas.lumineau@univ-lyon1.fr\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/supervisors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "supervisors"
+              ]
+            },
+            "description": "Create a new supervisor (returns 201 with the created supervisor)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Courses",
+      "item": [
+        {
+          "name": "Get All Courses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/courses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses"
+              ]
+            },
+            "description": "Retrieve all courses"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Course By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/courses/{{courseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses",
+                "{{courseId}}"
+              ]
+            },
+            "description": "Retrieve a specific course by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 1,\n  \"name\": \"SRS\",\n  \"level\": \"M2\",\n  \"years\": \"2025-2026\",\n  \"supervisorId\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/courses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses"
+              ]
+            },
+            "description": "Create a new course (returns 201 with the created course, returns 404 if supervisorId does not exist)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Course",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/courses/{{courseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses",
+                "{{courseId}}"
+              ]
+            },
+            "description": "Delete a course"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Students By Course",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/courses/{{courseId}}/students",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses",
+                "{{courseId}}",
+                "students"
+              ]
+            },
+            "description": "Retrieve all students enrolled in a course"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Students For Course",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"studentNumber\": \"12345678\",\n    \"firstName\": \"Jean\",\n    \"lastName\": \"Dupont\",\n    \"email\": \"jean.dupont@example.com\"\n  },\n  {\n    \"studentNumber\": \"12345679\",\n    \"firstName\": \"Marie\",\n    \"lastName\": \"Martin\",\n    \"email\": \"marie.martin@example.com\"\n }\n]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/courses/{{courseId}}/students",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses",
+                "{{courseId}}",
+                "students"
+              ]
+            },
+            "description": "Create multiple students and automatically enroll them in the specified course (the ONLY way to create students)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get TimeSlots By Course Between Dates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/courses/{{courseId}}/timeslots?startDate=2025-01-01&endDate=2025-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "courses",
+                "{{courseId}}",
+                "timeslots"
+              ],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2025-12-31"
+                }
+              ]
+            },
+            "description": "Retrieve time slots for a course between two dates"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Time Slots",
+      "item": [
+        {
+          "name": "Get Time Slot By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}"
+              ]
+            },
+            "description": "Retrieve a specific time slot by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Time Slot",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"courseId\": 1,\n  \"date\": \"2025-01-15\",\n  \"startTime\": \"09:00:00\",\n  \"endTime\": \"12:00:00\",\n  \"submissionStartTime\": \"08:00:00\",\n  \"submissionEndTime\": \"12:30:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots"
+              ]
+            },
+            "description": "Create a new time slot"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Time Slot",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2025-01-15\",\n  \"startTime\": \"09:00:00\",\n  \"endTime\": \"12:00:00\",\n  \"submissionStartTime\": \"08:00:00\",\n  \"submissionEndTime\": \"12:30:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}"
+              ]
+            },
+            "description": "Update an existing time slot"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Time Slot",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}"
+              ]
+            },
+            "description": "Delete a time slot"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "Get Student Attendance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}/student/{{studentId}}/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}",
+                "student",
+                "{{studentId}}",
+                "attendance"
+              ]
+            },
+            "description": "Check if a student is present at a time slot"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Multiple Attendance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}",
+                "attendance"
+              ]
+            },
+            "description": "Retrieve attendance for all students registered to the time slot"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Attendance (Batch)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"studentId\": \"12345678\",\n    \"attended\": true\n  },\n  {\n    \"studentId\": \"12345679\",\n    \"attended\": false\n  }\n]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{timeSlotId}}/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{timeSlotId}}",
+                "attendance"
+              ]
+            },
+            "description": "Update attendance for multiple students (true = present, false = absent)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Work Submission",
+      "item": [
+        {
+          "name": "Create Work Submission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"workType\": \"PERSONAL_WORK\",\n    \"subject\": \"TP React\",\n    \"description\": \"Implémentation du composant principal\",\n    \"timeSpent\": 120\n  },\n  {\n    \"workType\": \"COLLECTIVE_WORK\",\n    \"subject\": \"Projet de groupe\",\n    \"description\": \"Architecture backend\",\n    \"timeSpent\": 90\n  }\n]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{studentId}}/{{timeSlotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{studentId}}",
+                "{{timeSlotId}}"
+              ]
+            },
+            "description": "Create a WorkSubmission for a student and a TimeSlot (workType: PERSONAL_WORK|COLLECTIVE_WORK|COMPANY|OTHER)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Work Submission",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{studentId}}/{{timeSlotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{studentId}}",
+                "{{timeSlotId}}"
+              ]
+            },
+            "description": "Retrieve the WorkSubmission for a student and a given TimeSlot"
+          },
+          "response": []
+        },
+        {
+          "name": "Set Grade Work Submission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grade\": \"ONE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/timeslots/{{studentId}}/{{timeSlotId}}/grade",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "timeslots",
+                "{{studentId}}",
+                "{{timeSlotId}}",
+                "grade"
+              ]
+            },
+            "description": "Update the grade of a WorkSubmission (grade: ZERO|ONE)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "studentId",
+      "value": "12345678",
+      "type": "string"
+    },
+    {
+      "key": "timeSlotId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "courseId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "supervisorId",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}

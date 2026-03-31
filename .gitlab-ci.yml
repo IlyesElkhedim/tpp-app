@@ -1,0 +1,298 @@
+# GitLab CI Pipeline for TPP
+
+variables:
+  # Maven Configuration
+  # Notes sur les options réseau :
+  #   - wagon.http.pool=false         : désactive le pool de connexions HTTP (évite que le proxy thurottle les connexions longues)
+  #   - wagon.httpconnectionManager.ttlSeconds=20 : ferme les connexions idle > 20s (recycle avant que le proxy les bride)
+  #   - wagon.rto=30000               : read-timeout à 30s pour ne pas rester bloqué sur une connexion bridée
+  #   - wagon.http.retryHandler.count=3 : 3 tentatives en cas d'échec réseau
+  MAVEN_OPTS: >-
+    -Dhttps.protocols=TLSv1.2
+    -Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository
+    -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=WARN
+    -Dorg.slf4j.simpleLogger.showDateTime=true
+    -Djava.awt.headless=true
+    -Dmaven.wagon.http.pool=false
+    -Dmaven.wagon.httpconnectionManager.ttlSeconds=20
+    -Dmaven.wagon.rto=30000
+    -Dmaven.wagon.http.retryHandler.count=3
+  MAVEN_CLI_OPTS: "--no-transfer-progress --errors --fail-at-end -DinstallAtEnd=true -DdeployAtEnd=true"
+  # Docker BuildKit pour le cache des layers
+  DOCKER_BUILDKIT: "1"
+
+# Cache Maven par version de dépendances (invalidé uniquement si pom.xml change)
+cache:
+  key:
+    files:
+      - back/pom.xml
+  paths:
+    - .m2/repository
+    - .sonar/cache
+
+stages:
+  - build
+  - test
+  - sonarqube-check
+  - sonarqube-vulnerability-report
+  - deploy
+
+# Template pour les jobs Maven (configure le proxy)
+.maven_template: &maven_setup
+  before_script:
+    - chmod +x setup-mvn-proxy.sh && ./setup-mvn-proxy.sh || echo "Proxy setup skipped"
+
+# Build stage - Compile the backend
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-21-alpine
+  <<: *maven_setup
+  cache:
+    key:
+      files:
+        - back/pom.xml
+    paths:
+      - .m2/repository
+    policy: pull-push  # Lit le cache existant ET le met à jour si pom.xml change
+  script:
+    - cd back
+    - mvn $MAVEN_CLI_OPTS clean compile -Dmaven.test.skip=true
+  artifacts:
+    paths:
+      - back/target
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: false
+    - when: on_success
+
+# Test stage - Run unit and integration tests
+test:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21-alpine
+  <<: *maven_setup
+  cache:
+    key:
+      files:
+        - back/pom.xml
+    paths:
+      - .m2/repository
+    policy: pull  # Consomme le cache sans le réécrire
+  dependencies:
+    - build
+  script:
+    - cd back
+    - mvn $MAVEN_CLI_OPTS verify -Dmaven.main.skip=true
+  artifacts:
+    paths:
+      - back/target/surefire-reports
+      - back/target/site/jacoco
+      - back/target/classes
+    reports:
+      junit: back/target/surefire-reports/TEST-*.xml
+    expire_in: 30 days
+    when: always
+  coverage: '/Total.*?([0-9]{1,3})%/'
+  allow_failure: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: false
+    - when: on_success
+
+# SonarQube Quality Gate Analysis (Remote SonarQube instance)
+sonarqube_analysis:
+  stage: sonarqube-check
+  image: maven:3.9-eclipse-temurin-21-alpine
+  <<: *maven_setup
+  dependencies:
+    - build
+    - test
+  variables:
+    SONAR_USER_HOME: "$CI_PROJECT_DIR/.sonar"
+    GIT_DEPTH: "0"
+    SONAR_HOST_URL: "https://sonar.info.univ-lyon1.fr"
+    SONAR_TOKEN: "${SONAR_TOKEN}"
+  cache:
+    - key:
+        files:
+          - back/pom.xml
+      paths:
+        - .m2/repository
+      policy: pull  # Réutilise le cache Maven sans le réécrire
+    - key: "sonar-cache"
+      paths:
+        - .sonar/cache
+      policy: pull-push  # Le cache Sonar est mis à jour à chaque analyse
+  script:
+    - cd back
+    - mvn $MAVEN_CLI_OPTS sonar:sonar -DskipTests -Dsonar.projectKey=Projet-TPP -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+
+sonarqube-vulnerability-report:
+  stage: sonarqube-vulnerability-report
+  image: curlimages/curl:8.4.0
+  variables:
+    SONAR_HOST_URL: "https://sonar.info.univ-lyon1.fr"
+  script:
+    - 'curl -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/issues/gitlab_sast_export?projectKey=Projet-TPP&branch=${CI_COMMIT_BRANCH}&pullRequest=${CI_MERGE_REQUEST_IID}" -o gl-sast-sonar-report.json'
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "dev" || $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+  artifacts:
+    expire_in: 1 day
+    reports:
+      sast: gl-sast-sonar-report.json
+  dependencies:
+    - sonarqube_analysis
+
+# Deploy stage - Deploy to production VM on dev branch push
+deploy:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - sed -i 's/https/http/g' /etc/apk/repositories || true
+    - apk add --no-cache openssh-client curl rsync
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    # Copier la clé et s'assurer du bon format
+    - cat "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+    - chmod 600 ~/.ssh/deploy_key
+    # Ajouter la host key pour éviter les prompts
+    - ssh-keyscan -H 192.168.74.140 >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - echo "🚀 Déploiement sur VM 192.168.74.140..."
+    
+    # 1. Envoyer le code du backend sur la VM
+    - echo "📦 Envoi du code backend..."
+    - rsync -avz --delete --exclude='target' -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" back/ gitlab-deployer@192.168.74.140:/opt/tpp/back/
+    
+    # 2. Envoyer le code du frontend sur la VM
+    - echo "📦 Envoi du code frontend..."
+    - rsync -avz --delete --exclude='node_modules' --exclude='dist' -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" front/ gitlab-deployer@192.168.74.140:/opt/tpp/front/
+    
+    # 3. Envoyer docker-compose et .env
+    - echo "📋 Envoi des fichiers de configuration..."
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" docker-compose-dev.yml gitlab-deployer@192.168.74.140:/opt/tpp/docker-compose-dev.yml
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" .env.dev gitlab-deployer@192.168.74.140:/opt/tpp/.env || echo "No .env"
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" back/maven-settings.xml gitlab-deployer@192.168.74.140:/opt/tpp/back/maven-settings.xml
+    
+    # 4. Rebuild et restart des conteneurs sur la VM
+    - |
+      ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no gitlab-deployer@192.168.74.140 << 'DEPLOY_SCRIPT'
+      set -e
+      cd /opt/tpp
+      
+      echo "🔨 Rebuild des conteneurs avec le nouveau code..."
+      export DOCKER_BUILDKIT=1
+      export COMPOSE_DOCKER_CLI_BUILD=1
+      docker compose -f docker-compose-dev.yml up -d --build app-backend-dev app-frontend-dev
+      echo "✅ Conteneurs reconstruits et démarrés"
+
+      echo "📊 Status des services:"
+      docker compose -f docker-compose-dev.yml ps
+      
+      DEPLOY_SCRIPT
+    - echo "✅ Deployment completed!"
+  when: on_success
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == "dev"
+      when: on_success
+
+# Deploy stage - Deploy to PRODUCTION VM (manual only)
+deploy_prod:
+  stage: deploy
+  image: alpine:3.20
+  before_script:
+    - sed -i 's/https/http/g' /etc/apk/repositories || true
+    - apk add --no-cache openssh-client curl rsync
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - cat "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+    - chmod 600 ~/.ssh/deploy_key
+    - ssh-keyscan -H 192.168.74.146 >> ~/.ssh/known_hosts 2>/dev/null || true
+  script:
+    - echo "🚀 Déploiement PRODUCTION sur VM 192.168.74.146..."
+    - echo "⚠️ ATTENTION - Déploiement en PRODUCTION ⚠️"
+    - echo "💾 Backup de la base de données..."
+    - |
+      ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no gitlab-deployer@192.168.74.146 << 'BACKUP_SCRIPT'
+      set -e
+      cd /opt/tpp
+      mkdir -p /opt/tpp/backups
+      if docker volume inspect tpp-postgres-prod >/dev/null 2>&1; then
+        echo "Backup de la base de données..."
+        docker run --rm -v tpp-postgres-prod:/data -v /opt/tpp/backups:/backup alpine tar czf /backup/postgres-backup-$(date +%Y%m%d-%H%M%S).tar.gz /data
+        echo "✅ Backup créé dans /opt/tpp/backups/"
+        cd /opt/tpp/backups
+        ls -t postgres-backup-*.tar.gz | tail -n +8 | xargs -r rm
+      else
+        echo "Pas de volume postgres-prod, backup ignoré"
+      fi
+      BACKUP_SCRIPT
+    
+    # 2. Envoyer le code du backend sur la VM
+    - echo "📦 Envoi du code backend..."
+    - rsync -avz --delete --exclude='target' -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" back/ gitlab-deployer@192.168.74.146:/opt/tpp/back/
+    
+    # 3. Envoyer le code du frontend sur la VM
+    - echo "📦 Envoi du code frontend..."
+    - rsync -avz --delete --exclude='node_modules' --exclude='dist' -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" front/ gitlab-deployer@192.168.74.146:/opt/tpp/front/
+    
+    # 4. Envoyer docker-compose-prod.yml et .env.prod
+    - echo "📋 Envoi des fichiers de configuration PRODUCTION..."
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" docker-compose-prod.yml gitlab-deployer@192.168.74.146:/opt/tpp/docker-compose-prod.yml
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" .env.prod gitlab-deployer@192.168.74.146:/opt/tpp/.env || echo "⚠️  ATTENTION Pas de .env.prod trouvé!"
+    - rsync -avz -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" back/maven-settings.xml gitlab-deployer@192.168.74.146:/opt/tpp/back/maven-settings.xml
+    
+    # 5. Rebuild et restart des conteneurs sur la VM PROD
+    - |
+      ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no gitlab-deployer@192.168.74.146 << 'DEPLOY_SCRIPT'
+      set -e
+      cd /opt/tpp
+      
+      echo "🔨 Rebuild des conteneurs PRODUCTION avec le nouveau code..."
+      
+      # Pull les images de base
+      docker compose -f docker-compose-prod.yml pull || true
+      
+      # Rebuild et redémarrer avec BuildKit
+      export DOCKER_BUILDKIT=1
+      export COMPOSE_DOCKER_CLI_BUILD=1
+      docker compose -f docker-compose-prod.yml up -d --build app-backend-prod app-frontend-prod
+      
+      echo "⏳ Attente du démarrage des conteneurs (40s)..."
+      sleep 40
+      
+      echo "✅ Conteneurs reconstruits et démarrés"
+
+      echo "📊 Status des services PRODUCTION:"
+      docker compose -f docker-compose-prod.yml ps
+      
+      echo "🔍 Logs récents du backend:"
+      docker compose -f docker-compose-prod.yml logs --tail=20 app-backend-prod
+      DEPLOY_SCRIPT
+    - echo "✅ Deployment PRODUCTION completed!"
+  when: manual
+  only:
+    - main
+    - master
+  allow_failure: false
+  environment:
+    name: production
+    url: http://192.168.74.146
+

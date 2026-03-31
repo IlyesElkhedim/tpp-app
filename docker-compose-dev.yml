@@ -1,0 +1,144 @@
+services:
+  # Base de données PostgreSQL pour le développement en dev
+  postgres-dev:
+    image: postgres:15-alpine
+    container_name: tpp-postgres-dev
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tpp_dev}
+      POSTGRES_USER: ${DB_USER:-tpp_user_dev}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tpp_password_dev}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - tpp-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tpp_user_dev} -d ${DB_NAME:-tpp_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tpp-dev-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # PgAdmin pour gérer la base de données
+  pgadmin-dev:
+    image: dpage/pgadmin4:latest
+    container_name: tpp-pgadmin-dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "443:80"
+    depends_on:
+      - postgres-dev
+    volumes:
+      - tpp-pgadmin:/var/lib/pgadmin
+    networks:
+      - tpp-dev-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application Spring Boot
+  app-backend-dev:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    container_name: tpp-app-back-dev
+    environment:
+      # Database Configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-dev:5432/${DB_NAME:-tpp_dev}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-tpp_user_dev}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-tpp_password_dev}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+
+      # JPA/Hibernate Configuration
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_USE_SQL_COMMENTS: "true"
+      SPRING_JPA_OPEN_IN_VIEW: "false"
+      
+      # # Spring Security
+      # SPRING_SECURITY_FILTER_ORDER: "5"
+      # SECURITY_JWT_SECRET: ${JWT_SECRET:-change-this-in-production-immediately}
+      # SECURITY_JWT_EXPIRATION: "86400000"
+      
+      # Application Configuration
+      SPRING_PROFILES_ACTIVE: dev
+      SERVER_PORT: 8080
+
+      # Logging Configuration
+      LOGGING_LEVEL_ROOT: WARN
+      LOGGING_LEVEL_BACK_PROJET_TPP: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: INFO
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: DEBUG
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-dev:
+        condition: service_healthy
+    volumes:
+      - tpp-logs:/app/logs
+    networks:
+      - tpp-dev-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application React/Vite - Frontend
+  app-frontend-dev:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        # VITE_* doivent être des build args (Vite les embarque à la compilation, pas à l'exécution)
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://192.168.74.140:8080}
+    container_name: tpp-app-front-dev
+    ports:
+      - "80:80"
+    depends_on:
+      - app-backend-dev
+    networks:
+      - tpp-dev-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+# Déclaration des volumes Docker (portables entre machines)
+volumes:
+  tpp-postgres:
+    driver: local
+  tpp-logs:
+    driver: local
+  tpp-pgadmin:
+    driver: local
+
+networks:
+  tpp-dev-network:
+    driver: bridge
+    # Network configuration commented out to avoid conflicts
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

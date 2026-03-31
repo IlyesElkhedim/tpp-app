@@ -1,0 +1,126 @@
+services:
+  # Base de données PostgreSQL pour le développement en local
+  postgres-local:
+    image: postgres:15-alpine
+    container_name: tpp-postgres-local
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tpp_local}
+      POSTGRES_USER: ${DB_USER:-tpp_user_local}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tpp_password_local}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-tpp_user_local} -d ${DB_NAME:-tpp_local}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tpp-local-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # PgAdmin pour gérer la base de données
+  pgadmin-local:
+    image: dpage/pgadmin4:latest
+    container_name: tpp-pgadmin-local
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+      PGADMIN_CONFIG_CHECK_EMAIL_DELIVERABILITY: "False"
+      PGADMIN_CONFIG_ALLOW_SPECIAL_EMAIL_DOMAINS: "True"
+    ports:
+      - "443:80"
+    depends_on:
+      - postgres-local
+    networks:
+      - tpp-local-network
+    restart: on-failure
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application Spring Boot
+  app-backend-local:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    container_name: tpp-backend-local
+    environment:
+      # Database Configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-local:5432/${DB_NAME:-tpp_local}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-tpp_user_local}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-tpp_password_local}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+
+      # JPA/Hibernate Configuration
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_USE_SQL_COMMENTS: "true"
+      SPRING_JPA_OPEN_IN_VIEW: "false"
+
+      # # Spring Security
+      # SPRING_SECURITY_FILTER_ORDER: "5"
+      # SECURITY_JWT_SECRET: ${JWT_SECRET:-your-secret-key-dev-change-in-production}
+      # SECURITY_JWT_EXPIRATION: "86400000"
+
+      # Application Configuration
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: 8080
+
+      # Logging (très verbeux pour debug local)
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_BACK_PROJET_TPP: DEBUG
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: DEBUG
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: DEBUG
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-local:
+        condition: service_healthy
+    networks:
+      - tpp-local-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application React/Vite - Frontend
+  app-frontend-local:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+    container_name: tpp-frontend-local
+    environment:
+      # Variables d'environnement frontend
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+    ports:
+      - "80:80"
+    depends_on:
+      - app-backend-local
+    networks:
+      - tpp-local-network
+    restart: unless-stopped
+    deploy:
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+networks:
+  tpp-local-network:
+    driver: bridge

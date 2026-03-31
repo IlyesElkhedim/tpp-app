@@ -1,0 +1,132 @@
+# Configuration pour PRODUCTION (VM prod)
+
+services:
+  # Base de données PostgreSQL
+  postgres-prod:
+    image: postgres:15-alpine
+    container_name: tpp-postgres-prod
+    environment:
+      POSTGRES_DB: ${DB_NAME:?Database name required}
+      POSTGRES_USER: ${DB_USER:?Database user required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Database password required}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - tpp-postgres-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tpp-prod-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application Spring Boot
+  app-backend-prod:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    container_name: tpp-backend-prod
+    environment:
+      # Database Configuration
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-prod:5432/${DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Database password required}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      
+      # JPA/Hibernate Configuration
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_SHOW_SQL: "false"
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: "false"
+      SPRING_JPA_PROPERTIES_HIBERNATE_USE_SQL_COMMENTS: "false"
+      SPRING_JPA_OPEN_IN_VIEW: "false"
+
+      # Application Configuration
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      
+      # Logging (minimal en prod)
+      LOGGING_LEVEL_ROOT: ERROR
+      LOGGING_LEVEL_BACK_PROJET_TPP: WARN
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: WARN
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: ERROR
+    depends_on:
+      postgres-prod:
+        condition: service_healthy
+    volumes:
+      - tpp-logs-prod:/app/logs
+    networks:
+      - tpp-prod-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+  # Application React/Vite - Frontend
+  app-frontend-prod:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        VITE_API_BASE_URL: "http://192.168.74.146:8080"
+    container_name: tpp-frontend-prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./front/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app-backend-prod
+    networks:
+      - tpp-prod-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+
+# Déclaration des volumes Docker (portables entre machines)
+volumes:
+  tpp-postgres-prod:
+    driver: local
+  tpp-logs-prod:
+    driver: local
+
+networks:
+  tpp-prod-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
